@@ -57,3 +57,23 @@ def login(
             status_code=401,
             detail=str(e),
         )
+    
+@router.post("/register")
+def register(
+    payload: RegisterRequest,
+    db: Session = Depends(get_db),
+):
+    print("DB =", db)
+    print("TYPE =", type(db))
+
+    try:
+        return AuthService.register(
+            db,
+            payload,
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e),
+        )

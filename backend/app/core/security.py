@@ -1,8 +1,15 @@
 from passlib.context import CryptContext
-from jose import jwt 
+from jose import jwt, JWTError
 from datetime import datetime, timedelta
-import os 
+from typing import Optional
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
+
+SECRET_KEY = os.getenv("JWT_SECRET")
+
+print("SECRET_KEY =", SECRET_KEY)
 pwd_context = CryptContext(
     schemes=["bcrypt"],
     deprecated="auto"
@@ -11,30 +18,68 @@ pwd_context = CryptContext(
 SECRET_KEY = os.getenv("JWT_SECRET")
 ALGORITHM = "HS256"
 
-def hash_password(password: str):
+
+# -----------------------------
+# Password Hashing
+# -----------------------------
+
+def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
+
 def verify_password(
-        plain_password,
-        hashed_password
-    ):
+    plain_password: str,
+    hashed_password: str
+) -> bool:
     return pwd_context.verify(
         plain_password,
         hashed_password
     )
 
-def create_access_token(data: dict):
+
+# -----------------------------
+# JWT Creation
+# -----------------------------
+
+def create_access_token(data: dict) -> str:
+
     to_encode = data.copy()
+
     expire = datetime.utcnow() + timedelta(days=1)
 
     to_encode.update(
         {
-            "exp":expire
+            "exp": expire
         }
     )
 
-    return jwt.encode(
-        to_encode, 
+    encoded_jwt = jwt.encode(
+        to_encode,
         SECRET_KEY,
         algorithm=ALGORITHM
     )
+
+    return encoded_jwt
+
+
+# -----------------------------
+# JWT Decoding
+# -----------------------------
+
+def decode_token(
+    token: str
+) -> Optional[dict]:
+
+    try:
+
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM]
+        )
+
+        return payload
+
+    except JWTError:
+
+        return None
