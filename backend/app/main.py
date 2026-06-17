@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.auth import router as auth_router
 from app.api.users import router as users_router
+from app.api.documents import (router as documents_router)
 
 app = FastAPI(
     title="StudyMind AI API"
@@ -38,3 +39,8 @@ def root():
     return {
         "message": "StudyMind AI API"
     }
+app.include_router(
+    documents_router,
+    prefix="/api/documents",
+    tags=["Documents"],
+)
