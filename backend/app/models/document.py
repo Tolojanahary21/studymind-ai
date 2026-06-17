@@ -2,6 +2,7 @@ from sqlalchemy import Column
 from sqlalchemy import Integer
 from sqlalchemy import String
 from sqlalchemy import ForeignKey
+from sqlalchemy import Text
 
 from app.db.database import Base
 
@@ -19,6 +20,8 @@ class Document(Base):
     filename = Column(String)
 
     filepath = Column(String)
+
+    content = Column(Text)
 
     owner_id = Column(
         Integer,
