@@ -1,27 +1,20 @@
 const API_URL = "http://localhost:8000";
 
-export async function apiFetch(
-  endpoint: string,
-  options?: RequestInit
-) {
+export async function getCurrentUser() {
+  const token = localStorage.getItem("token");
+
   const response = await fetch(
-    `${API_URL}${endpoint}`,
+    `${API_URL}/api/users/me`,
     {
       headers: {
-        "Content-Type": "application/json",
-        ...(options?.headers || {}),
+        Authorization: `Bearer ${token}`,
       },
-      ...options,
     }
   );
 
-  const data = await response.json();
-
   if (!response.ok) {
-    throw new Error(
-      data.detail || "Request failed"
-    );
+    throw new Error("Failed to fetch user");
   }
 
-  return data;
+  return response.json();
 }
