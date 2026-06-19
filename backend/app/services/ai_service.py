@@ -1,96 +1,123 @@
+from ollama import chat
 import json
 import re
-import ollama
-
-from app.models.quiz import Quiz
-from app.models.question import Question
-from sqlalchemy.orm import Session
 
 
 class AIService:
 
     @staticmethod
-    def generate_quiz(text: str, document_id: int, db: Session):
+    def generate_summary(text: str):
+
+        response = chat(
+            model="llama3",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an academic assistant."
+                },
+                {
+                    "role": "user",
+                    "content": f"""
+Summarize the following academic document.
+
+Provide:
+- Main concepts
+- Important definitions
+- Key points
+
+Document:
+
+{text[:10000]}
+"""
+                }
+            ]
+        )
+
+        return response["message"]["content"]
+
+    @staticmethod
+    def generate_quiz(text: str):
 
         prompt = f"""
-You are a strict JSON generator.
+You are an academic teacher.
 
-Generate EXACTLY 20 multiple-choice questions.
+Generate EXACTLY 20 multiple-choice questions based on the document.
 
-RULES:
+Difficulty distribution:
 - 7 easy
 - 7 medium
 - 6 hard
-- 4 choices each
-- only one correct answer
 
-Return ONLY JSON array:
+Rules:
+- Each question must have exactly 4 choices.
+- Only one answer must be correct.
+- Questions must be based on the document.
+- Return ONLY valid JSON.
+- No markdown.
+- No explanation.
+- No text before or after the JSON.
+
+Expected format:
 
 [
-  {{
-    "difficulty": "easy|medium|hard",
-    "question": "...",
-    "choices": ["A","B","C","D"],
-    "answer": "correct choice"
-  }}
+    {{
+        "difficulty": "easy",
+        "question": "What is Hibernate?",
+        "choices": [
+            "ORM Framework",
+            "Database",
+            "IDE",
+            "Programming Language"
+        ],
+        "answer": "ORM Framework"
+    }}
 ]
 
-TEXT:
+Document:
+
 {text[:12000]}
 """
 
-        response = ollama.chat(
+        response = chat(
             model="llama3",
-            messages=[{"role": "user", "content": prompt}]
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
         )
 
         content = response["message"]["content"]
 
-        # extraction JSON
-        match = re.search(r"\[\s*\{.*\}\s*\]", content, re.DOTALL)
-
-        if not match:
-            return None
+        # print("\n\n===== OLLAMA RESPONSE =====")
+        # print(content)
+        # print("===========================\n\n")
 
         try:
-            quiz_data = json.loads(match.group())
-        except json.JSONDecodeError:
-            return None
 
-        #  validation basique
-        if not isinstance(quiz_data, list):
-            return None
-
-        # =========================
-        #  SAUVEGARDE DB
-        # =========================
-
-        # 1. créer Quiz
-        quiz = Quiz(
-            document_id=document_id,
-            title="AI Generated Quiz"
-        )
-
-        db.add(quiz)
-        db.flush()  # pour obtenir quiz.id
-
-        # 2. créer Questions
-        for q in quiz_data:
-
-            if len(q.get("choices", [])) != 4:
-                continue
-
-            question = Question(
-                quiz_id=quiz.id,
-                difficulty=q.get("difficulty"),
-                question=q.get("question"),
-                choices=q.get("choices"),
-                answer=q.get("answer")
+            match = re.search(
+                r"\[.*\]",
+                content,
+                re.DOTALL
             )
 
-            db.add(question)
+            if not match:
+                print("JSON array not found")
+                return []
 
-        db.commit()
-        db.refresh(quiz)
+            quiz_json = match.group()
 
-        return quiz
+            quiz_data = json.loads(
+                quiz_json
+            )
+
+            return quiz_data
+
+        except Exception as e:
+
+            print(
+                f"Quiz parsing error: {e}"
+            )
+
+            return []
