@@ -113,3 +113,52 @@ def generate_quiz(
             quiz_data
         )
     }
+@router.get("/")
+def get_my_documents(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+
+    documents = (
+        db.query(Document)
+        .filter(
+            Document.owner_id == current_user.id
+        )
+        .order_by(Document.id.desc())
+        .all()
+    )
+
+    return [
+        {
+            "id": doc.id,
+            "filename": doc.filename,
+            "characters": len(doc.content or "")
+        }
+        for doc in documents
+    ]
+
+@router.get("/{document_id}")
+def get_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    document = (
+        db.query(Document)
+        .filter(
+            Document.id == document_id,
+            Document.owner_id == current_user.id
+        )
+        .first()
+    )
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    return {
+        "id": document.id,
+        "name": document.filename,
+        "type": document.filename.split('.')[-1].upper(),
+        "date": document.created_at.strftime("%d/%m/%Y") if hasattr(document, 'created_at') else "N/A",
+        "size": f"{len(document.content or '') / 1024:.1f} MB" if document.content else "0 MB"
+    }
