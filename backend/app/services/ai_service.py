@@ -39,44 +39,88 @@ Document:
     def generate_quiz(text: str):
 
         prompt = f"""
-You are an academic teacher.
+You are an expert university professor and assessment designer.
 
-Generate EXACTLY 20 multiple-choice questions based on the document.
+Your task is to create a high-quality multiple-choice quiz based ONLY on the provided document.
 
-Difficulty distribution:
-- 7 easy
-- 7 medium
-- 6 hard
+STRICT REQUIREMENTS:
 
-Rules:
-- Each question must have exactly 4 choices.
-- Only one answer must be correct.
-- Questions must be based on the document.
-- Return ONLY valid JSON.
-- No markdown.
-- No explanation.
-- No text before or after the JSON.
+1. Generate EXACTLY 20 questions.
 
-Expected format:
+2. Difficulty distribution:
+
+   * 7 easy
+   * 7 medium
+   * 6 hard
+
+3. Each question must:
+
+   * Test understanding of the document.
+   * Be factually correct.
+   * Be unique.
+   * Avoid repetition.
+   * Avoid trivial wording.
+   * Be clear and concise.
+
+4. Easy questions:
+
+   * Test basic concepts, definitions, terminology.
+   * Answers should be directly supported by the document.
+
+5. Medium questions:
+
+   * Test understanding of relationships, processes, mechanisms, or comparisons.
+   * Require comprehension rather than simple memorization.
+
+6. Hard questions:
+
+   * Test deeper reasoning, implications, analysis, or advanced concepts present in the document.
+   * Require combining multiple pieces of information from the document.
+
+7. Multiple choice rules:
+
+   * Exactly 4 choices per question.
+   * Exactly 1 correct answer.
+   * Incorrect answers must be plausible.
+   * Do NOT create obviously wrong distractors.
+   * Do NOT use "All of the above".
+   * Do NOT use "None of the above".
+
+8. Answer quality:
+
+   * The answer MUST exactly match one item in choices.
+   * No duplicate choices.
+   * No empty values.
+
+9. Output format:
+
+   * Return ONLY valid JSON.
+   * No markdown.
+   * No comments.
+   * No explanation.
+   * No text before or after JSON.
+
+10. Return this exact structure:
 
 [
-    {{
-        "difficulty": "easy",
-        "question": "What is Hibernate?",
-        "choices": [
-            "ORM Framework",
-            "Database",
-            "IDE",
-            "Programming Language"
-        ],
-        "answer": "ORM Framework"
-    }}
+{
+"difficulty": "easy",
+"question": "Question text",
+"choices": [
+"Choice A",
+"Choice B",
+"Choice C",
+"Choice D"
+],
+"answer": "Choice A"
+}
 ]
 
 Document:
 
 {text[:12000]}
 """
+
 
         response = chat(
             model="llama3",

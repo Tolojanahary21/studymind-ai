@@ -197,7 +197,7 @@ export default function DashboardPage() {
                 Bonjour {firstName} 👋
               </h1>
               <p className="text-sm text-[#6B6B66]">
-                Bienvenue sur votre espace d/apprentissage
+                Bienvenue sur votre espace d'apprentissage
               </p>
               <p className="text-xs text-[#6B6B66]">{user.email}</p>
             </div>
@@ -277,7 +277,7 @@ export default function DashboardPage() {
                         Résumé
                       </button>
                       <button
-                        onClick={() => router.push(`/documents/${doc.id}/quiz`)}
+                        onClick={() => router.push(`/quiz/${doc.id}`)}
                         className="rounded-lg bg-[#171412] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#2a2521]"
                       >
                         Quiz
