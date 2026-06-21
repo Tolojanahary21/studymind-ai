@@ -9,15 +9,6 @@ export async function getCurrentUser() {
   return response.json();
 }
 
-export async function getDocuments() {
-  const token = localStorage.getItem("token");
-  const response = await fetch(`${API_URL}/api/documents`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!response.ok) throw new Error("Failed to fetch documents");
-  return response.json();
-}
-
 export async function uploadDocument(file: File) {
   const token = localStorage.getItem("token");
   const formData = new FormData();
@@ -72,5 +63,45 @@ export async function submitQuiz(quizId: number, score: number, totalQuestions: 
     body: JSON.stringify({ score, total_questions: totalQuestions }),
   });
   if (!response.ok) throw new Error("Failed to submit quiz");
+  return response.json();
+}
+export async function getDocuments() {
+  const token =
+    localStorage.getItem("token");
+
+  const response = await fetch(
+    "http://localhost:8000/api/documents",
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      "Failed to load documents"
+    );
+  }
+
+  return response.json();
+}
+
+export async function getHistory() {
+
+  const token =
+    localStorage.getItem("token");
+
+  const response =
+    await fetch(
+      "http://localhost:8000/api/quizzes/history",
+      {
+        headers: {
+          Authorization:
+            `Bearer ${token}`,
+        },
+      }
+    );
+
   return response.json();
 }

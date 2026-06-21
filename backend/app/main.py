@@ -4,7 +4,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.auth import router as auth_router
 from app.api.users import router as users_router
 from app.api.documents import (router as documents_router)
+from app.api.dashboard import router as dashboard_router
 from app.api.quizzes import router as quizzes_router
+
 app = FastAPI(
     title="StudyMind AI API"
 )
@@ -44,8 +46,15 @@ app.include_router(
     prefix="/api/documents",
     tags=["Documents"],
 )
+
+app.include_router(
+    dashboard_router,
+    prefix="/api/dashboard",
+    tags=["Dashboard"],
+)
+
 app.include_router(
     quizzes_router,
     prefix="/api/quizzes",
-    tags=["Quizzes"]
+    tags=["Quizzes"],
 )

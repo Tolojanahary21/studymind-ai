@@ -162,3 +162,26 @@ def get_document(
         "date": document.created_at.strftime("%d/%m/%Y") if hasattr(document, 'created_at') else "N/A",
         "size": f"{len(document.content or '') / 1024:.1f} MB" if document.content else "0 MB"
     }
+@router.get("/")
+def get_documents(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+
+    documents = (
+        db.query(Document)
+        .filter(
+            Document.owner_id == current_user.id
+        )
+        .order_by(Document.id.desc())
+        .all()
+    )
+
+    return [
+        {
+            "id": doc.id,
+            "filename": doc.filename,
+            "characters": len(doc.content or "")
+        }
+        for doc in documents
+    ]

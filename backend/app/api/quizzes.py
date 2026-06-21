@@ -97,3 +97,33 @@ def submit_quiz(
         "message": "Quiz submitted",
         "attempt_id": attempt.id
     }
+@router.get("/history")
+def get_history(
+    db: Session = Depends(get_db),
+    current_user=Depends(
+        get_current_user
+    )
+):
+
+    attempts = (
+        db.query(QuizAttempt)
+        .filter(
+            QuizAttempt.user_id ==
+            current_user.id
+        )
+        .order_by(
+            QuizAttempt.id.desc()
+        )
+        .all()
+    )
+
+    return [
+        {
+            "id": a.id,
+            "quiz_id": a.quiz_id,
+            "score": a.score,
+            "total_questions":
+                a.total_questions
+        }
+        for a in attempts
+    ]
