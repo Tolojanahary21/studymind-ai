@@ -1,12 +1,12 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { 
-  Loader2, 
-  AlertCircle, 
-  FileText, 
-  Sparkles, 
+import { useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import {
+  Loader2,
+  AlertCircle,
+  FileText,
+  Sparkles,
   Home,
   Copy,
   Check,
@@ -16,8 +16,14 @@ import {
   Clock,
   BookOpen,
   Brain,
-  Zap
-} from "lucide-react";
+  Zap,
+  RotateCcw,
+  Eye,
+  EyeOff,
+  Type,
+  Lightbulb,
+} from 'lucide-react';
+import { getToken, logout as logoutHelper } from '@/lib/auth';
 
 interface SummaryResponse {
   summary: string;
@@ -29,68 +35,89 @@ interface SummaryResponse {
 export default function SummaryPage() {
   const params = useParams();
   const router = useRouter();
-  const [summary, setSummary] = useState<string>("");
+
+  // States
+  const [summary, setSummary] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [regenerating, setRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [documentTitle, setDocumentTitle] = useState<string>("Document");
+  const [documentTitle, setDocumentTitle] = useState<string>('Document');
   const [wordCount, setWordCount] = useState<number>(0);
   const [charCount, setCharCount] = useState<number>(0);
+  const [readingTime, setReadingTime] = useState<number>(0);
+  const [fontSize, setFontSize] = useState<'small' | 'medium' | 'large'>('medium');
+  const [readMode, setReadMode] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
 
+  // Load summary on mount
   useEffect(() => {
     async function loadSummary() {
       try {
         setLoading(true);
         setError(null);
 
-        const token = localStorage.getItem("token");
-        
+        const token = getToken();
+
         if (!token) {
-          throw new Error("Vous devez être connecté pour accéder à cette page");
+          router.push('/login');
+          return;
         }
 
         const response = await fetch(
           `http://localhost:8000/api/documents/${params.id}/summary`,
           {
-            method: "POST",
+            method: 'POST',
             headers: {
               Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
+              'Content-Type': 'application/json',
             },
           }
         );
 
+        if (response.status === 401) {
+          logoutHelper();
+          router.push('/login');
+          return;
+        }
+
         if (!response.ok) {
-          if (response.status === 401) {
-            throw new Error("Session expirée. Veuillez vous reconnecter.");
-          }
           if (response.status === 404) {
-            throw new Error("Document non trouvé.");
+            throw new Error('Document non trouvé.');
           }
           if (response.status === 400) {
             const errorData = await response.json();
-            throw new Error(errorData.detail || "Le document n'a pas de contenu à résumer.");
+            throw new Error(
+              errorData.detail || "Le document n'a pas de contenu à résumer."
+            );
           }
-          throw new Error(`Erreur ${response.status}: Impossible de générer le résumé`);
+          throw new Error(
+            `Erreur ${response.status}: Impossible de générer le résumé`
+          );
         }
 
         const data: SummaryResponse = await response.json();
-        
-        if (!data.summary || data.summary === "No content available to summarize.") {
+
+        if (!data.summary || data.summary === 'No content available to summarize.') {
           throw new Error("Ce document n'a pas de contenu à résumer.");
         }
 
         setSummary(data.summary);
         setDocumentTitle(data.title || `Document #${params.id}`);
-        
-        // Compter les mots et caractères
-        const words = data.summary.split(/\s+/).filter(word => word.length > 0);
-        setWordCount(words.length);
-        setCharCount(data.summary.replace(/\s/g, '').length);
 
+        // Calculate statistics
+        const words = data.summary.split(/\s+/).filter((word) => word.length > 0);
+        const wordCount = words.length;
+        const charCount = data.summary.replace(/\s/g, '').length;
+        const readingTime = Math.max(1, Math.round(wordCount / 200));
+
+        setWordCount(wordCount);
+        setCharCount(charCount);
+        setReadingTime(readingTime);
       } catch (error: any) {
-        console.error("Erreur:", error);
-        setError(error.message || "Une erreur est survenue lors du chargement du résumé.");
+        console.error('Erreur:', error);
+        setError(error.message || 'Une erreur est survenue lors du chargement du résumé.');
       } finally {
         setLoading(false);
       }
@@ -99,36 +126,86 @@ export default function SummaryPage() {
     if (params.id) {
       loadSummary();
     }
-  }, [params.id]);
+  }, [params.id, router]);
 
-  const goToDashboard = () => {
-    router.push('/dashboard');
+  // Handle regenerate summary
+  const handleRegenerate = async () => {
+    try {
+      setRegenerating(true);
+      setError(null);
+
+      const token = getToken();
+      if (!token) {
+        router.push('/login');
+        return;
+      }
+
+      const response = await fetch(
+        `http://localhost:8000/api/documents/${params.id}/summary`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Erreur lors de la régénération du résumé');
+      }
+
+      const data: SummaryResponse = await response.json();
+      setSummary(data.summary);
+
+      const words = data.summary.split(/\s+/).filter((word) => word.length > 0);
+      setWordCount(words.length);
+      setCharCount(data.summary.replace(/\s/g, '').length);
+      setReadingTime(Math.max(1, Math.round(words.length / 200)));
+
+      showToastMessage('Résumé régénéré avec succès!');
+    } catch (error: any) {
+      setError(error.message || 'Erreur lors de la régénération');
+    } finally {
+      setRegenerating(false);
+    }
   };
 
-  const goBack = () => {
-    router.back();
+  // Toast notification
+  const showToastMessage = (message: string) => {
+    setToastMessage(message);
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 3000);
   };
 
+  // Copy to clipboard
   const copyToClipboard = async () => {
     try {
       await navigator.clipboard.writeText(summary);
       setCopied(true);
+      showToastMessage('Résumé copié!');
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error("Erreur de copie:", err);
+      console.error('Erreur de copie:', err);
+      setError('Impossible de copier le texte');
     }
   };
 
+  // Download summary
   const downloadSummary = () => {
-    const element = document.createElement("a");
-    const file = new Blob([summary], { type: "text/plain" });
+    const element = document.createElement('a');
+    const file = new Blob([summary], { type: 'text/plain;charset=utf-8' });
     element.href = URL.createObjectURL(file);
-    element.download = `resume_${documentTitle}_${new Date().toISOString().split('T')[0]}.txt`;
+    element.download = `resume_${documentTitle.replace(/\s/g, '_')}_${new Date()
+      .toISOString()
+      .split('T')[0]}.txt`;
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
+    showToastMessage('Résumé téléchargé!');
   };
 
+  // Share summary
   const shareSummary = async () => {
     if (navigator.share) {
       try {
@@ -136,30 +213,73 @@ export default function SummaryPage() {
           title: `Résumé - ${documentTitle}`,
           text: summary,
         });
+        showToastMessage('Résumé partagé!');
       } catch (err) {
-        console.error("Erreur de partage:", err);
+        console.error('Erreur de partage:', err);
       }
     } else {
       copyToClipboard();
     }
   };
 
+  // Navigate functions
+  const goToDashboard = () => {
+    router.push('/dashboard');
+  };
+
+  const goToQuiz = () => {
+    router.push(`/documents/${params.id}/quiz`);
+  };
+
+  const goBack = () => {
+    router.back();
+  };
+
+  // Font size class
+  const fontSizeClasses = {
+    small: 'text-base',
+    medium: 'text-lg',
+    large: 'text-xl',
+  };
+
+  // Loading skeleton
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600">
-        <div className="text-center">
-          <div className="relative">
-            <div className="h-24 w-24 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-6">
-              <Loader2 className="h-12 w-12 animate-spin text-white" />
+      <div className="min-h-screen bg-gradient-to-br from-[#FAF9F6] to-[#F3F1EB] py-8 px-4">
+        <div className="max-w-5xl mx-auto">
+          {/* Header skeleton */}
+          <div className="bg-white rounded-2xl shadow-sm p-6 mb-6">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="h-10 w-10 bg-gray-200 rounded-lg animate-pulse"></div>
+                <div className="h-10 w-20 bg-gray-200 rounded-lg animate-pulse"></div>
+                <div>
+                  <div className="h-8 w-40 bg-gray-200 rounded-lg animate-pulse mb-2"></div>
+                  <div className="h-4 w-32 bg-gray-200 rounded-lg animate-pulse"></div>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <div className="h-10 w-10 bg-gray-200 rounded-lg animate-pulse"></div>
+                <div className="h-10 w-10 bg-gray-200 rounded-lg animate-pulse"></div>
+              </div>
             </div>
-            <div className="absolute inset-0 h-24 w-24 mx-auto rounded-full border-4 border-white/20 border-t-white animate-spin"></div>
           </div>
-          <div className="space-y-3">
-            <div className="h-4 w-48 bg-white/20 rounded animate-pulse mx-auto"></div>
-            <div className="h-3 w-32 bg-white/20 rounded animate-pulse mx-auto"></div>
-            <div className="flex items-center justify-center gap-2 mt-4">
-              <Brain className="h-5 w-5 text-white/60 animate-pulse" />
-              <span className="text-white/60 text-sm">Analyse en cours...</span>
+
+          {/* Stats skeleton */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="bg-white rounded-2xl shadow-sm p-4 animate-pulse">
+                <div className="h-12 bg-gray-200 rounded-lg"></div>
+              </div>
+            ))}
+          </div>
+
+          {/* Content skeleton */}
+          <div className="bg-white rounded-3xl shadow-sm p-8">
+            <div className="space-y-4">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="h-4 bg-gray-200 rounded animate-pulse"></div>
+              ))}
             </div>
           </div>
         </div>
@@ -167,25 +287,26 @@ export default function SummaryPage() {
     );
   }
 
+  // Error state
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 p-4">
-        <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-8 max-w-md w-full transform hover:scale-105 transition-transform duration-300">
-          <div className="h-24 w-24 bg-gradient-to-br from-red-400 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
-            <AlertCircle className="h-12 w-12 text-white" />
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#FAF9F6] to-[#F3F1EB] p-4">
+        <div className="bg-white rounded-3xl shadow-lg p-8 max-w-md w-full">
+          <div className="h-20 w-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="h-10 w-10 text-red-600" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-800 text-center mb-2">Oups !</h2>
+          <h2 className="text-2xl font-bold text-gray-800 text-center mb-2">Erreur</h2>
           <p className="text-gray-600 text-center mb-6">{error}</p>
           <div className="space-y-3">
             <button
               onClick={() => window.location.reload()}
-              className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-6 py-3 rounded-xl hover:shadow-xl transition-all transform hover:scale-105 font-semibold"
+              className="w-full bg-[#171412] text-white px-6 py-3 rounded-xl hover:bg-[#2a2521] transition-all font-semibold"
             >
               Réessayer
             </button>
             <button
               onClick={goToDashboard}
-              className="w-full bg-gray-100 text-gray-700 px-6 py-3 rounded-xl hover:bg-gray-200 transition-all transform hover:scale-105 font-semibold flex items-center justify-center gap-2"
+              className="w-full bg-gray-100 text-gray-700 px-6 py-3 rounded-xl hover:bg-gray-200 transition-all font-semibold flex items-center justify-center gap-2"
             >
               <Home className="h-5 w-5" />
               Retour au dashboard
@@ -197,68 +318,118 @@ export default function SummaryPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 py-8 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-[#FAF9F6] to-[#F3F1EB] py-8 px-4">
       <div className="max-w-5xl mx-auto">
         {/* Header */}
-        <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-6 mb-6 transition-all duration-300 hover:shadow-3xl">
+        <div className="bg-white rounded-2xl shadow-sm p-6 mb-6 border border-[#E5E2DA]">
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div className="flex items-center gap-4">
               <button
                 onClick={goBack}
-                className="group bg-gradient-to-r from-indigo-500 to-purple-600 text-white p-2 rounded-xl hover:shadow-xl transition-all transform hover:scale-105"
+                className="group bg-[#171412] text-white p-2 rounded-lg hover:shadow-md transition-all"
                 title="Retour"
               >
-                <ChevronLeft className="h-6 w-6 group-hover:-translate-x-1 transition-transform" />
+                <ChevronLeft className="h-5 w-5" />
               </button>
               <button
                 onClick={goToDashboard}
-                className="group bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-4 py-2 rounded-xl hover:shadow-xl transition-all transform hover:scale-105 flex items-center gap-2 font-medium"
+                className="group bg-[#171412] text-white px-4 py-2 rounded-lg hover:shadow-md transition-all flex items-center gap-2 font-medium text-sm"
               >
-                <Home className="h-5 w-5 group-hover:rotate-12 transition-transform" />
+                <Home className="h-4 w-4" />
                 Dashboard
               </button>
               <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent flex items-center gap-2">
-                  <FileText className="h-8 w-8 text-indigo-600" />
+                <h1 className="text-2xl font-bold text-[#171412] flex items-center gap-2">
+                  <FileText className="h-6 w-6 text-[#C9A227]" />
                   Résumé
                 </h1>
                 <p className="text-gray-600 text-sm flex items-center gap-2 mt-1">
-                  <BookOpen className="h-4 w-4 text-indigo-500" />
+                  <BookOpen className="h-4 w-4 text-[#C9A227]" />
                   {documentTitle}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+
+            {/* Action buttons */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="hidden sm:flex items-center gap-2 bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => setFontSize('small')}
+                  className={`p-1 rounded ${
+                    fontSize === 'small'
+                      ? 'bg-[#171412] text-white'
+                      : 'text-gray-600 hover:text-gray-800'
+                  }`}
+                  title="Petite taille"
+                >
+                  <Type className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setFontSize('medium')}
+                  className={`p-1 rounded ${
+                    fontSize === 'medium'
+                      ? 'bg-[#171412] text-white'
+                      : 'text-gray-600 hover:text-gray-800'
+                  }`}
+                  title="Taille normale"
+                >
+                  <Type className="h-5 w-5" />
+                </button>
+                <button
+                  onClick={() => setFontSize('large')}
+                  className={`p-1 rounded ${
+                    fontSize === 'large'
+                      ? 'bg-[#171412] text-white'
+                      : 'text-gray-600 hover:text-gray-800'
+                  }`}
+                  title="Grande taille"
+                >
+                  <Type className="h-6 w-6" />
+                </button>
+              </div>
+
+              <button
+                onClick={() => setReadMode(!readMode)}
+                className={`p-2 rounded-lg transition-all ${
+                  readMode
+                    ? 'bg-[#C9A227] text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+                title={readMode ? 'Quitter mode lecture' : 'Mode lecture'}
+              >
+                {readMode ? (
+                  <EyeOff className="h-5 w-5" />
+                ) : (
+                  <Eye className="h-5 w-5" />
+                )}
+              </button>
+
               {summary && (
                 <>
-                  <div className="bg-gradient-to-r from-indigo-50 to-purple-50 px-3 py-1 rounded-full flex items-center gap-2 text-sm">
-                    <Clock className="h-4 w-4 text-indigo-500" />
-                    <span>{wordCount} mots</span>
-                  </div>
                   <button
                     onClick={copyToClipboard}
-                    className="group bg-gradient-to-r from-indigo-500 to-purple-600 text-white p-2 rounded-xl hover:shadow-xl transition-all transform hover:scale-105"
+                    className="group bg-gray-100 text-gray-700 p-2 rounded-lg hover:bg-gray-200 transition-all"
                     title="Copier"
                   >
                     {copied ? (
-                      <Check className="h-5 w-5 text-green-300" />
+                      <Check className="h-5 w-5 text-green-600" />
                     ) : (
-                      <Copy className="h-5 w-5 group-hover:scale-110 transition-transform" />
+                      <Copy className="h-5 w-5" />
                     )}
                   </button>
                   <button
                     onClick={downloadSummary}
-                    className="group bg-gradient-to-r from-indigo-500 to-purple-600 text-white p-2 rounded-xl hover:shadow-xl transition-all transform hover:scale-105"
+                    className="group bg-gray-100 text-gray-700 p-2 rounded-lg hover:bg-gray-200 transition-all"
                     title="Télécharger"
                   >
-                    <Download className="h-5 w-5 group-hover:-translate-y-1 transition-transform" />
+                    <Download className="h-5 w-5" />
                   </button>
                   <button
                     onClick={shareSummary}
-                    className="group bg-gradient-to-r from-indigo-500 to-purple-600 text-white p-2 rounded-xl hover:shadow-xl transition-all transform hover:scale-105"
+                    className="group bg-gray-100 text-gray-700 p-2 rounded-lg hover:bg-gray-200 transition-all"
                     title="Partager"
                   >
-                    <Share2 className="h-5 w-5 group-hover:rotate-12 transition-transform" />
+                    <Share2 className="h-5 w-5" />
                   </button>
                 </>
               )}
@@ -266,74 +437,109 @@ export default function SummaryPage() {
           </div>
         </div>
 
-        {/* Statistiques */}
+        {/* Statistics */}
         {summary && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-xl p-4 flex items-center gap-4 transition-all hover:shadow-2xl hover:scale-105">
-              <div className="bg-gradient-to-br from-indigo-400 to-purple-500 p-3 rounded-xl">
-                <FileText className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 font-medium">Mots</p>
-                <p className="text-2xl font-bold text-gray-800">{wordCount}</p>
-              </div>
-            </div>
-            <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-xl p-4 flex items-center gap-4 transition-all hover:shadow-2xl hover:scale-105">
-              <div className="bg-gradient-to-br from-emerald-400 to-teal-500 p-3 rounded-xl">
-                <Sparkles className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 font-medium">Caractères</p>
-                <p className="text-2xl font-bold text-gray-800">{charCount}</p>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div className="bg-white rounded-2xl shadow-sm p-4 border border-[#E5E2DA]">
+              <div className="flex items-center gap-3">
+                <div className="bg-blue-100 p-2 rounded-lg">
+                  <FileText className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-600">Mots</p>
+                  <p className="text-xl font-bold text-[#171412]">{wordCount}</p>
+                </div>
               </div>
             </div>
-            <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-xl p-4 flex items-center gap-4 transition-all hover:shadow-2xl hover:scale-105">
-              <div className="bg-gradient-to-br from-amber-400 to-orange-500 p-3 rounded-xl">
-                <Zap className="h-6 w-6 text-white" />
+            <div className="bg-white rounded-2xl shadow-sm p-4 border border-[#E5E2DA]">
+              <div className="flex items-center gap-3">
+                <div className="bg-green-100 p-2 rounded-lg">
+                  <Sparkles className="h-5 w-5 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-600">Caractères</p>
+                  <p className="text-xl font-bold text-[#171412]">{charCount}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs text-gray-500 font-medium">Temps de lecture</p>
-                <p className="text-2xl font-bold text-gray-800">
-                  {Math.max(1, Math.round(wordCount / 200))} min
-                </p>
+            </div>
+            <div className="bg-white rounded-2xl shadow-sm p-4 border border-[#E5E2DA]">
+              <div className="flex items-center gap-3">
+                <div className="bg-purple-100 p-2 rounded-lg">
+                  <Clock className="h-5 w-5 text-purple-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-600">Lecture</p>
+                  <p className="text-xl font-bold text-[#171412]">{readingTime} min</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-2xl shadow-sm p-4 border border-[#E5E2DA]">
+              <div className="flex items-center gap-3">
+                <div className="bg-yellow-100 p-2 rounded-lg">
+                  <Brain className="h-5 w-5 text-yellow-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-600">Compression</p>
+                  <p className="text-xl font-bold text-[#171412]">
+                    {Math.round(((wordCount * 5) / charCount) * 100)}%
+                  </p>
+                </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* Contenu du résumé */}
-        <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl p-8 transition-all duration-300 hover:shadow-3xl border border-white/20 animate-slideUp">
-          <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
-            <div className="bg-gradient-to-r from-indigo-500 to-purple-600 p-2 rounded-xl">
-              <Sparkles className="h-5 w-5 text-white animate-pulse" />
+        {/* Summary Content */}
+        <div
+          className={`bg-white rounded-3xl shadow-sm p-8 border border-[#E5E2DA] transition-all ${
+            readMode ? 'fixed inset-0 z-40 rounded-none max-w-none max-h-screen overflow-y-auto' : ''
+          }`}
+        >
+          {readMode && (
+            <button
+              onClick={() => setReadMode(false)}
+              className="fixed top-6 right-6 bg-[#171412] text-white p-3 rounded-lg hover:shadow-lg transition-all z-50"
+              title="Quitter le mode lecture"
+            >
+              <EyeOff className="h-5 w-5" />
+            </button>
+          )}
+
+          <div
+            className={`flex items-center gap-3 mb-6 pb-4 border-b border-gray-200 ${
+              readMode ? 'hidden' : ''
+            }`}
+          >
+            <div className="bg-[#C9A227] p-2 rounded-lg">
+              <Sparkles className="h-5 w-5 text-white" />
             </div>
-            <h2 className="text-xl font-bold text-gray-800">Résumé généré par IA</h2>
-            <span className="ml-auto text-xs bg-gradient-to-r from-indigo-100 to-purple-100 text-indigo-700 px-3 py-1 rounded-full font-medium">
-              GPT-4o-mini
+            <h2 className="text-xl font-bold text-[#171412]">Résumé généré par IA</h2>
+            <span className="ml-auto text-xs bg-[#FBF3DC] text-[#C9A227] px-3 py-1 rounded-full font-medium">
+              Ollama Llama3
             </span>
           </div>
 
-          <div className="prose prose-lg max-w-none">
-            <p className="text-gray-700 leading-relaxed whitespace-pre-wrap text-lg font-medium">
-              {summary}
-            </p>
+          <div className={`${fontSizeClasses[fontSize]} text-[#171412] leading-relaxed whitespace-pre-wrap`}>
+            {summary}
           </div>
 
-          {/* Badge de confirmation */}
-          <div className="mt-8 pt-4 border-t border-gray-100 flex items-center justify-between flex-wrap gap-4">
-            <div className="flex items-center gap-2 text-sm text-gray-500">
-              <Check className="h-4 w-4 text-green-500" />
+          {/* Actions footer */}
+          <div className={`mt-8 pt-6 border-t border-gray-200 flex items-center justify-between flex-wrap gap-4 ${
+            readMode ? 'hidden' : ''
+          }`}>
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <Check className="h-4 w-4 text-green-600" />
               <span>Résumé généré avec succès</span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 onClick={copyToClipboard}
-                className="bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-700 px-4 py-2 rounded-xl hover:shadow-lg transition-all transform hover:scale-105 flex items-center gap-2 font-medium"
+                className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-all flex items-center gap-2 font-medium text-sm"
               >
                 {copied ? (
                   <>
-                    <Check className="h-4 w-4 text-green-500" />
-                    Copié !
+                    <Check className="h-4 w-4 text-green-600" />
+                    Copié!
                   </>
                 ) : (
                   <>
@@ -344,61 +550,74 @@ export default function SummaryPage() {
               </button>
               <button
                 onClick={downloadSummary}
-                className="bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-700 px-4 py-2 rounded-xl hover:shadow-lg transition-all transform hover:scale-105 flex items-center gap-2 font-medium"
+                className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-all flex items-center gap-2 font-medium text-sm"
               >
                 <Download className="h-4 w-4" />
                 Télécharger
+              </button>
+              <button
+                onClick={handleRegenerate}
+                disabled={regenerating}
+                className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-all flex items-center gap-2 font-medium text-sm disabled:opacity-50"
+              >
+                {regenerating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Régénération...
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="h-4 w-4" />
+                    Régénérer
+                  </>
+                )}
               </button>
             </div>
           </div>
         </div>
 
-        {/* Actions rapides */}
-        <div className="mt-6 flex justify-center gap-4 flex-wrap">
+        {/* Quick actions */}
+        <div className={`mt-6 flex justify-center gap-3 flex-wrap ${
+          readMode ? 'hidden' : ''
+        }`}>
           <button
-            onClick={goToDashboard}
-            className="group bg-white/95 backdrop-blur-sm text-gray-700 px-6 py-3 rounded-2xl hover:shadow-2xl transition-all transform hover:scale-105 flex items-center gap-3 font-medium shadow-lg"
+            onClick={goToQuiz}
+            className="group bg-[#171412] text-white px-6 py-3 rounded-lg hover:shadow-md transition-all flex items-center gap-2 font-medium"
           >
-            <Home className="h-5 w-5 group-hover:rotate-12 transition-transform text-indigo-600" />
-            Retour au Dashboard
+            <Brain className="h-5 w-5" />
+            Générer un Quiz
           </button>
           <button
-            onClick={() => router.push(`/documents/${params.id}`)}
-            className="group bg-white/95 backdrop-blur-sm text-gray-700 px-6 py-3 rounded-2xl hover:shadow-2xl transition-all transform hover:scale-105 flex items-center gap-3 font-medium shadow-lg"
+            onClick={goToDashboard}
+            className="group bg-white border border-[#E5E2DA] text-[#171412] px-6 py-3 rounded-lg hover:shadow-md transition-all flex items-center gap-2 font-medium"
           >
-            <FileText className="h-5 w-5 group-hover:scale-110 transition-transform text-indigo-600" />
-            Voir le document original
+            <Home className="h-5 w-5" />
+            Retour au Dashboard
           </button>
         </div>
       </div>
 
+      {/* Toast notification */}
+      {showToast && (
+        <div className="fixed bottom-6 right-6 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-slide-up">
+          <Check className="h-5 w-5" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
       <style jsx>{`
-        @keyframes slideUp {
+        @keyframes slide-up {
           from {
             opacity: 0;
-            transform: translateY(30px);
+            transform: translateY(20px);
           }
           to {
             opacity: 1;
             transform: translateY(0);
           }
         }
-        @keyframes pulse-soft {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.7; }
-        }
-        .animate-slideUp {
-          animation: slideUp 0.6s ease-out;
-        }
-        .shadow-3xl {
-          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-        }
-        .prose {
-          max-width: 100%;
-        }
-        .prose p {
-          margin-top: 0;
-          margin-bottom: 0;
+        .animate-slide-up {
+          animation: slide-up 0.3s ease-out;
         }
       `}</style>
     </div>

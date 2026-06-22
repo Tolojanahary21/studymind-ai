@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   FileText,
@@ -8,6 +8,8 @@ import {
   ListChecks,
   TrendingUp,
   LogOut,
+  Upload,
+  X,
 } from 'lucide-react';
 import {
   LineChart,
@@ -18,11 +20,15 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { getToken, logout } from '@/lib/auth';
+import { getToken, logout as logoutHelper } from '@/lib/auth';
 
-// -----------------------------------------------------------------------------
 // Types
-// -----------------------------------------------------------------------------
+interface CurrentUser {
+  id: number;
+  firstname: string;
+  lastname: string;
+  email: string;
+}
 
 interface RecentDocument {
   id: number;
@@ -55,26 +61,10 @@ interface DashboardStats {
   progress_data: ProgressPoint[];
 }
 
-interface CurrentUser {
-  id: number;
-  firstname: string;
-  lastname: string;
-  email: string;
-}
-
-// -----------------------------------------------------------------------------
 // Config
-// -----------------------------------------------------------------------------
-
-// Adaptez NEXT_PUBLIC_API_URL dans votre .env.local (ex: http://localhost:8000)
-// Garde la même URL en dur que le reste du projet (lib/api.ts). Tu peux la
-// remplacer par process.env.NEXT_PUBLIC_API_URL si tu préfères centraliser.
 const API_URL = 'http://localhost:8000';
 
-// -----------------------------------------------------------------------------
 // Helpers
-// -----------------------------------------------------------------------------
-
 function getInitials(firstname: string, lastname: string): string {
   const first = firstname?.[0] ?? '';
   const last = lastname?.[0] ?? '';
@@ -89,18 +79,20 @@ function formatDate(dateString: string): string {
   });
 }
 
-// -----------------------------------------------------------------------------
-// Page
-// -----------------------------------------------------------------------------
-
+// Main Component
 export default function DashboardPage() {
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // State
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isUploadingPDF, setIsUploadingPDF] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
+  // Load data on mount
   useEffect(() => {
     const token = getToken();
 
@@ -121,7 +113,7 @@ export default function DashboardPage() {
         ]);
 
         if (statsRes.status === 401 || meRes.status === 401) {
-          logout();
+          logoutHelper();
           router.push('/login');
           return;
         }
@@ -147,11 +139,78 @@ export default function DashboardPage() {
     loadDashboard();
   }, [router]);
 
-  function handleLogout() {
-    logout();
+  // Upload PDF Handler
+  async function handleUploadPDF(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingPDF(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const token = getToken();
+      if (!token) {
+        setError('Token JWT manquant');
+        return;
+      }
+
+      const response = await fetch(`${API_URL}/api/documents/upload`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (response.status === 401) {
+        logoutHelper();
+        router.push('/login');
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error('Erreur lors de l\'upload du PDF');
+      }
+
+      // Rafraîchir les stats après upload
+      const statsToken = getToken();
+      if (statsToken) {
+        const statsRes = await fetch(`${API_URL}/api/dashboard/stats`, {
+          headers: { Authorization: `Bearer ${statsToken}` },
+        });
+
+        if (statsRes.ok) {
+          const updatedStats: DashboardStats = await statsRes.json();
+          setStats(updatedStats);
+        }
+      }
+
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur d\'upload');
+    } finally {
+      setIsUploadingPDF(false);
+    }
+  }
+
+  // Logout Handler
+  function handleLogoutClick() {
+    setShowLogoutConfirm(true);
+  }
+
+  function handleConfirmLogout() {
+    logoutHelper();
     router.push('/login');
   }
 
+  // Loading state
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#FAF9F6]">
@@ -203,14 +262,42 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-2 rounded-xl border border-[#E5E2DA] bg-white px-4 py-2 text-sm font-medium text-[#171412] shadow-sm transition-colors hover:bg-[#F3F1EB]"
-          >
-            <LogOut className="h-4 w-4" />
-            Déconnexion
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploadingPDF}
+              className="flex items-center gap-2 rounded-xl bg-[#C9A227] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#b8931f] disabled:opacity-50"
+            >
+              <Upload className="h-4 w-4" />
+              {isUploadingPDF ? 'Upload...' : 'Ajouter PDF'}
+            </button>
+
+            <button
+              onClick={handleLogoutClick}
+              className="flex items-center gap-2 rounded-xl border border-[#E5E2DA] bg-white px-4 py-2 text-sm font-medium text-[#171412] shadow-sm transition-colors hover:bg-[#F3F1EB]"
+            >
+              <LogOut className="h-4 w-4" />
+              Déconnexion
+            </button>
+          </div>
+
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf"
+            onChange={handleUploadPDF}
+            className="hidden"
+            disabled={isUploadingPDF}
+          />
         </header>
+
+        {/* Message d'erreur d'upload */}
+        {error && (
+          <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            {error}
+          </div>
+        )}
 
         {/* SECTION 2 — Cartes statistiques */}
         <section className="mb-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -277,7 +364,7 @@ export default function DashboardPage() {
                         Résumé
                       </button>
                       <button
-                        onClick={() => router.push(`/quiz/${doc.id}`)}
+                        onClick={() => router.push(`/documents/${doc.id}/quiz`)}
                         className="rounded-lg bg-[#171412] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#2a2521]"
                       >
                         Quiz
@@ -357,12 +444,13 @@ export default function DashboardPage() {
                     }}
                   />
                   <YAxis
-                    domain={[0, 100]}
+                    domain={[0, 20]}
+                    ticks={[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]}
                     tick={{ fill: '#6B6B66', fontSize: 12 }}
                     axisLine={{ stroke: '#E5E2DA' }}
                     tickLine={false}
                     label={{
-                      value: 'Score %',
+                      value: 'Score (/20)',
                       angle: -90,
                       position: 'insideLeft',
                       fill: '#6B6B66',
@@ -376,7 +464,7 @@ export default function DashboardPage() {
                       borderRadius: '12px',
                       fontSize: '13px',
                     }}
-                    formatter={(value: number) => [`${value} %`, 'Score']}
+                    formatter={(value: number) => [`${value}/20`, 'Score']}
                     labelFormatter={(label) => `Tentative #${label}`}
                   />
                   <Line
@@ -393,14 +481,50 @@ export default function DashboardPage() {
           )}
         </section>
       </div>
+
+      {/* LOGOUT CONFIRMATION MODAL */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="mx-4 max-w-sm rounded-2xl bg-white p-6 shadow-lg sm:mx-0">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-[#171412]">
+                Confirmer la déconnexion
+              </h3>
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                className="text-[#6B6B66] hover:text-[#171412]"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <p className="mb-6 text-sm text-[#6B6B66]">
+              Êtes-vous sûr de vouloir vous déconnecter? Vous devrez vous
+              reconnecter pour accéder à votre espace.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                className="flex-1 rounded-lg border border-[#E5E2DA] px-4 py-2 text-sm font-medium text-[#171412] transition-colors hover:bg-[#F3F1EB]"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleConfirmLogout}
+                className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700"
+              >
+                Déconnexion
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-// -----------------------------------------------------------------------------
 // Sous-composants
-// -----------------------------------------------------------------------------
-
 function StatCard({
   icon,
   label,
